@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Universal AI Chat | Glassmorphism Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            transition: background 0.3s ease;
+        }
+
+        .light-mode {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            color: #1e293b;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .light-mode .glass {
+            background: rgba(255, 255, 255, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(148, 163, 184, 0.2);
+        }
+
+        #loading {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            background: #0f172a;
+            transition: opacity 0.5s ease;
+        }
+
+        .chat-container {
+            height: calc(100dvh - 140px);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.2) transparent;
+        }
+
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
+        .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .message-bubble {
+            max-width: 85%;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        pre {
+            background: rgba(0,0,0,0.3) !important;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        code { font-family: 'Fira Code', monospace; font-size: 0.9em; }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        pre:hover .copy-btn { opacity: 1; }
+
+        /* Mobile specific fixes */
+        @media (max-width: 768px) {
+            .message-bubble { max-width: 95%; }
+            .sidebar {
+                position: fixed;
+                z-index: 50;
+                width: 80%;
+                height: 100vh;
+            }
+        }
+    </style>
+</head>
+<body class="dark-mode">
+
+    <div id="loading">
+        <div class="text-center">
+            <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-white font-medium">Initializing AI Interface...</p>
+        </div>
+    </div>
+
+    <div class="flex min-h-screen relative overflow-hidden">
+        
+        <aside id="sidebar" class="sidebar sidebar-transition glass w-72 h-screen fixed lg:relative -translate-x-full lg:translate-x-0 flex flex-col">
+            <div class="p-4 border-b border-white/10 flex justify-between items-center">
+                <h1 class="font-bold text-xl tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">Nexus AI</h1>
+                <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-white/10 rounded-lg">✕</button>
+            </div>
+            
+            <div class="p-4">
+                <button onclick="createNewChat()" class="w-full py-2 px-4 rounded-xl glass hover:bg-white/20 transition flex items-center justify-center gap-2 mb-4">
+                    <span>+</span> New Chat
+                </button>
+            </div>
+
+            <div id="chat-history" class="flex-grow overflow-y-auto px-4 space-y-2 pb-20">
+                </div>
+
+            <div class="p-4 border-t border-white/10 absolute bottom-0 w-full glass">
+                <button onclick="openSettings()" class="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/10 rounded-lg transition">
+                    <span>⚙️</span> Settings
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-grow flex flex-col h-screen relative">
+            
+            <header class="p-4 glass flex justify-between items-center z-10">
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleSidebar()" class="p-2 hover:bg-white/10 rounded-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                    <div class="flex flex-col">
+                        <span id="current-chat-title" class="font-semibold truncate max-w-[150px] md:max-w-md">New Conversation</span>
+                        <span id="current-model-badge" class="text-[10px] uppercase tracking-widest opacity-60">Deepseek-R1</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="toggleTheme()" class="p-2 hover:bg-white/10 rounded-lg">🌙</button>
+                </div>
+            </header>
+
+            <div id="chat-messages" class="chat-container flex-grow overflow-y-auto p-4 md:p-8 space-y-6">
+                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
+                    <div class="w-20 h-20 glass rounded-3xl flex items-center justify-center text-3xl">✨</div>
+                    <h2 class="text-2xl font-bold">How can I help you today?</h2>
+                    <p class="max-w-md">Ask anything. This interface is powered by OpenRouter and stored entirely in your browser.</p>
+                </div>
+            </div>
+
+            <div class="p-4 md:p-6 glass-none bg-gradient-to-t from-slate-900/50 to-transparent">
+                <div class="max-w-4xl mx-auto relative group">
+                    <div class="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur opacity-20 group-focus-within:opacity-40 transition duration-500"></div>
+                    <div class="relative flex items-end gap-2 glass p-2 rounded-2xl border-white/20">
+                        <textarea id="user-input" rows="1" 
+                            class="flex-grow bg-transparent border-none focus:ring-0 resize-none px-3 py-2 text-white placeholder-white/40"
+                            placeholder="Type your message..."
+                            oninput="autoResize(this)"></textarea>
+                        <button id="send-btn" onclick="handleSend()" 
+                            class="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all flex-shrink-0 disabled:opacity-50">
+                            <svg class="w-5 h-5 rotate-90" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-[10px] text-center mt-3 opacity-40">AI can make mistakes. Verify important info.</p>
+            </div>
+        </main>
+    </div>
+
+    <div id="settings-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div class="glass max-w-lg w-full rounded-3xl p-6 space-y-6 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold">System Settings</h3>
+                <button onclick="closeSettings()" class="p-2 hover:bg-white/10 rounded-full">✕</button>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium opacity-70 mb-1">OpenRouter API Key</label>
+                    <input type="password" id="api-key-input" class="w-full glass bg-white/5 border-white/10 rounded-xl px-4 py-2 focus:ring-2 ring-blue-500 outline-none" placeholder="sk-or-...">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium opacity-70 mb-1">AI Model</label>
+                    <select id="model-select" class="w-full glass bg-white/5 border-white/10 rounded-xl px-4 py-2 outline-none">
+                        <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
+                        <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+                        <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+                        <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium opacity-70 mb-1">System Prompt</label>
+                    <textarea id="system-prompt-input" rows="3" class="w-full glass bg-white/5 border-white/10 rounded-xl px-4 py-2 outline-none resize-none" placeholder="You are a helpful AI assistant..."></textarea>
+                </div>
+            </div>
+
+            <div class="pt-4 flex gap-3">
+                <button onclick="saveSettings()" class="flex-grow py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold transition">Save Configuration</button>
+                <button onclick="closeSettings()" class="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl transition">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /** * APP STATE 
+         */
+        let state = {
+            apiKey: '',
+            model: 'deepseek/deepseek-r1:free',
+            systemPrompt: 'You are a helpful assistant. Provide concise and accurate answers.',
+            chats: [], // {id, title, messages: [{role, content}]}
+            currentChatId: null,
+            theme: 'dark'
+        };
+
+        const elements = {
+            loading: document.getElementById('loading'),
+            chatMessages: document.getElementById('chat-messages'),
+            userInput: document.getElementById('user-input'),
+            sidebar: document.getElementById('sidebar'),
+            chatHistory: document.getElementById('chat-history'),
+            settingsModal: document.getElementById('settings-modal'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            modelSelect: document.getElementById('model-select'),
+            systemPromptInput: document.getElementById('system-prompt-input'),
+            chatTitle: document.getElementById('current-chat-title'),
+            modelBadge: document.getElementById('current-model-badge'),
+            welcomeScreen: document.getElementById('welcome-screen'),
+            sendBtn: document.getElementById('send-btn')
+        };
+
+        /**
+         * INITIALIZATION
+         */
+        window.onload = () => {
+            loadFromStorage();
+            initAudio();
+            renderSidebar();
+            
+            if (state.currentChatId) {
+                loadChat(state.currentChatId);
+            }
+
+            // Hide loader with fade
+            setTimeout(() => {
+                elements.loading.style.opacity = '0';
+                setTimeout(() => elements.loading.style.display = 'none', 500);
+            }, 800);
+
+            // Handle Enter to send
+            elements.userInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                }
+            });
+        };
+
+        /**
+         * CORE LOGIC: SENDING MESSAGES
+         */
+        async function handleSend() {
+            const content = elements.userInput.value.trim();
+            if (!content) return;
+            if (!state.apiKey) {
+                playSound('error');
+                alert('Please enter an API Key in Settings first!');
+                openSettings();
+                return;
+            }
+
+            // Create new chat if none exists
+            if (!state.currentChatId) {
+                createNewChat(content.substring(0, 30));
+            }
+
+            const currentChat = state.chats.find(c => c.id === state.currentChatId);
+            
+            // UI Update: User Message
+            currentChat.messages.push({ role: 'user', content });
+            renderMessages();
+            elements.userInput.value = '';
+            autoResize(elements.userInput);
+            playSound('send');
+
+            // UI Update: AI Thinking Placeholder
+            const aiMessageObj = { role: 'assistant', content: '' };
+            currentChat.messages.push(aiMessageObj);
+            const aiMsgIndex = currentChat.messages.length - 1;
+            const messageEl = renderStreamingPlaceholder();
+            
+            try {
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${state.apiKey}`,
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": window.location.href,
+                        "X-Title": "Nexus AI Interface"
+                    },
+                    body: JSON.stringify({
+                        model: state.model,
+                        messages: [
+                            { role: "system", content: state.systemPrompt },
+                            ...currentChat.messages.slice(0, -1)
+                        ],
+                        stream: true
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split("\n");
+
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                            const data = line.slice(6);
+                            if (data === "[DONE]") continue;
+                            try {
+                                const parsed = JSON.parse(data);
+                                const token = parsed.choices[0].delta.content || "";
+                                fullText += token;
+                                // Update message object and UI
+                                aiMessageObj.content = fullText;
+                                messageEl.querySelector('.content-area').innerHTML = marked.parse(fullText);
+                                elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+                                if (token) playSound('token');
+                            } catch (e) {}
+                        }
+                    }
+                }
+                saveState();
+            } catch (err) {
+                aiMessageObj.content = "Error: Failed to connect to OpenRouter. Please check your API key and connection.";
+                renderMessages();
+            }
+        }
+
+        /**
+         * UI RENDERING
+         */
+        function renderMessages() {
+            const currentChat = state.chats.find(c => c.id === state.currentChatId);
+            if (!currentChat || currentChat.messages.length === 0) {
+                elements.welcomeScreen.classList.remove('hidden');
+                elements.chatMessages.innerHTML = '';
+                elements.chatMessages.appendChild(elements.welcomeScreen);
+                return;
+            }
+
+            elements.welcomeScreen.classList.add('hidden');
+            elements.chatMessages.innerHTML = currentChat.messages.map((msg, idx) => `
+                <div class="flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}">
+                    <div class="message-bubble glass rounded-2xl p-4 ${msg.role === 'user' ? 'bg-blue-600/20' : 'bg-white/5'}">
+                        <div class="text-[10px] uppercase tracking-widest mb-1 opacity-50">${msg.role}</div>
+                        <div class="content-area prose prose-invert max-w-none text-sm leading-relaxed">
+                            ${marked.parse(msg.content)}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            attachCopyButtons();
+        }
+
+        function renderStreamingPlaceholder() {
+            elements.welcomeScreen.classList.add('hidden');
+            const div = document.createElement('div');
+            div.className = "flex justify-start";
+            div.innerHTML = `
+                <div class="message-bubble glass rounded-2xl p-4 bg-white/5">
+                    <div class="text-[10px] uppercase tracking-widest mb-1 opacity-50">assistant</div>
+                    <div class="content-area prose prose-invert max-w-none text-sm leading-relaxed">
+                        <span class="animate-pulse">...</span>
+                    </div>
+                </div>
+            `;
+            elements.chatMessages.appendChild(div);
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            return div;
+        }
+
+        function renderSidebar() {
+            elements.chatHistory.innerHTML = state.chats.map(chat => `
+                <div class="group relative flex items-center gap-2 p-3 rounded-xl cursor-pointer transition ${state.currentChatId === chat.id ? 'glass bg-white/10' : 'hover:bg-white/5'}" 
+                     onclick="loadChat('${chat.id}')">
+                    <span class="flex-grow truncate text-sm">${chat.title}</span>
+                    <button onclick="event.stopPropagation(); deleteChat('${chat.id}')" class="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400">🗑️</button>
+                </div>
+            `).reverse().join('');
+        }
+
+        /**
+         * CHAT MANAGEMENT
+         */
+        function createNewChat(title = "New Conversation") {
+            const id = Date.now().toString();
+            state.chats.push({ id, title, messages: [] });
+            state.currentChatId = id;
+            saveState();
+            renderSidebar();
+            renderMessages();
+            elements.chatTitle.innerText = title;
+            if (window.innerWidth < 1024) toggleSidebar();
+        }
+
+        function loadChat(id) {
+            state.currentChatId = id;
+            const chat = state.chats.find(c => c.id === id);
+            elements.chatTitle.innerText = chat.title;
+            renderMessages();
+            renderSidebar();
+            if (window.innerWidth < 1024) toggleSidebar();
+            playSound('click');
+        }
+
+        function deleteChat(id) {
+            state.chats = state.chats.filter(c => c.id !== id);
+            if (state.currentChatId === id) {
+                state.currentChatId = state.chats.length > 0 ? state.chats[0].id : null;
+            }
+            saveState();
+            renderSidebar();
+            renderMessages();
+        }
+
+        /**
+         * SETTINGS & PREFERENCES
+         */
+        function openSettings() {
+            elements.apiKeyInput.value = state.apiKey;
+            elements.modelSelect.value = state.model;
+            elements.systemPromptInput.value = state.systemPrompt;
+            elements.settingsModal.classList.remove('hidden');
+            elements.settingsModal.classList.add('flex');
+            playSound('click');
+        }
+
+        function closeSettings() {
+            elements.settingsModal.classList.add('hidden');
+            elements.settingsModal.classList.remove('flex');
+        }
+
+        function saveSettings() {
+            state.apiKey = elements.apiKeyInput.value.trim();
+            state.model = elements.modelSelect.value;
+            state.systemPrompt = elements.systemPromptInput.value.trim();
+            state.modelBadge.innerText = state.model.split('/')[1] || state.model;
+            saveState();
+            closeSettings();
+            playSound('send');
+        }
+
+        function toggleTheme() {
+            state.theme = state.theme === 'dark' ? 'light' : 'dark';
+            document.body.className = state.theme + '-mode';
+            saveState();
+        }
+
+        /**
+         * UTILS
+         */
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+        }
+
+        function toggleSidebar() {
+            const isHidden = elements.sidebar.classList.contains('-translate-x-full');
+            if (isHidden) {
+                elements.sidebar.classList.remove('-translate-x-full');
+            } else {
+                elements.sidebar.classList.add('-translate-x-full');
+            }
+            playSound('click');
+        }
+
+        function attachCopyButtons() {
+            document.querySelectorAll('pre').forEach(block => {
+                if (block.querySelector('.copy-btn')) return;
+                const btn = document.createElement('button');
+                btn.className = 'copy-btn';
+                btn.innerText = 'Copy';
+                btn.onclick = () => {
+                    const code = block.querySelector('code').innerText;
+                    navigator.clipboard.writeText(code);
+                    btn.innerText = 'Copied!';
+                    setTimeout(() => btn.innerText = 'Copy', 2000);
+                };
+                block.appendChild(btn);
+            });
+        }
+
+        function saveState() {
+            localStorage.setItem('nexus_ai_state', JSON.stringify(state));
+        }
+
+        function loadFromStorage() {
+            const saved = localStorage.getItem('nexus_ai_state');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                state = { ...state, ...parsed };
+                document.body.className = state.theme + '-mode';
+                elements.modelBadge.innerText = state.model.split('/')[1] || state.model;
+            }
+        }
+
+        /**
+         * AUDIO SYSTEM (Synthesized for zero dependencies)
+         */
+        let audioCtx;
+        function initAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+
+            if (type === 'send') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start();
+                osc.stop(now + 0.1);
+            } else if (type === 'token') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1200, now);
+                gain.gain.setValueAtTime(0.02, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start();
+                osc.stop(now + 0.05);
+            } else if (type === 'click') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, now);
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+                osc.start();
+                osc.stop(now + 0.05);
+            }
+        }
+    </script>
+</body>
+</html>
